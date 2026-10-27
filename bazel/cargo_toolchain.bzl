@@ -62,7 +62,7 @@ def _local_cargo_repository_impl(ctx):
     result = ctx.execute([
         python, ctx.path(ctx.attr.prepare), "discover", str(ctx.path(".")),
         str(rustup), channel, wasm_channel,
-    ], environment = {"RUSTUP_AUTO_INSTALL": "0"}, timeout = 600, quiet = False)
+    ], environment = {"RUSTUP_AUTO_INSTALL": "0"}, timeout = 600, quiet = True)
     if result.return_code:
         fail("Cannot prepare Cargo toolchain; run ./build.py init: " + result.stderr)
     config = json.decode(ctx.read("toolchains.json"))
@@ -88,7 +88,7 @@ local_cargo_repository = repository_rule(
         "rust_toolchain": attr.label(default = Label("//rust:rust-toolchain.toml")),
         "wasm_toolchain": attr.label(default = Label("//deps/init/wasm:rust-toolchain-version")),
     },
-    environ = ["PATH", "RUSTUP_HOME", "CARGO_HOME", "HOME", "RUSTUP_DIST_SERVER", "RUSTUP_UPDATE_ROOT"],
+    environ = ["PATH", "RUSTUP_HOME", "CARGO_HOME", "HOME"],
     local = True,
     configure = True,
 )
