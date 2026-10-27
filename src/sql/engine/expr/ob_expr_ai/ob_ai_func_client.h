@@ -59,6 +59,7 @@ private:
   bool is_timeout();
 private:
   static const int64_t CURL_MAX_TIMEOUT_SEC;
+  static const int64_t MAX_RESPONSE_SIZE;
   common::ObIAllocator *allocator_;
   char *url_;
   struct curl_slist *header_list_;

@@ -37,14 +37,31 @@ public:
                                 int64_t param_num,
                                 common::ObExprTypeCtx &type_ctx) const override;
   static int eval_ai_embed(const ObExpr &expr, ObEvalCtx &ctx, ObDatum &res);
+  // Batch evaluation collects the inputs of a whole SQL batch into one (or a
+  // few) requests, propagates SQL NULL rows and maps results back to the
+  // original rows.
+  static int eval_ai_embed_batch(const ObExpr &expr,
+                                 ObEvalCtx &ctx,
+                                 const ObBitVector &skip,
+                                 const int64_t batch_size);
   virtual int cg_expr(ObExprCGCtx &expr_cg_ctx, 
                       const ObRawExpr &raw_expr,
                       ObExpr &rt_expr) const override;
   virtual bool need_rt_ctx() const override { return true; }
 private:
+  static int eval_ai_embed_single(const ObExpr &expr,
+                                  ObEvalCtx &ctx,
+                                  ObDatum *model_datum,
+                                  ObDatum *content_datum,
+                                  ObDatum *dim_datum,
+                                  ObIAllocator &allocator,
+                                  ObString &result);
   static constexpr int MODEL_IDX = 0;
   static constexpr int CONTENT_IDX = 1;
   static constexpr int DIM_IDX = 2;
+  static constexpr int64_t MAX_EMBED_DIMENSION = 1 << 20;
+  static constexpr int64_t EMBED_BATCH_ROW_LIMIT = 20;
+  static constexpr int64_t EMBED_BATCH_BYTE_LIMIT = 1024 * 1024;
   DISALLOW_COPY_AND_ASSIGN(ObExprAIEmbed);
 };
 

@@ -20,6 +20,7 @@
 #include "ob_ai_func.h"
 #include "share/json/ob_json_helper.h"
 #include "lib/encode/ob_base64_encode.h"
+#include "lib/string/ob_string_buffer.h"
 
 namespace oceanbase 
 {
@@ -124,6 +125,13 @@ public:
     DISALLOW_COPY_AND_ASSIGN(ObOllamaEmbed);
   };
   static int get_header(common::ObIAllocator &allocator, common::ObArray<ObString> &headers);
+  // Translate the OpenAI style config into Ollama's native request layout:
+  // sampling parameters go into the nested "options" object and "format" stays
+  // at the top level. Reserved body fields are dropped.
+  static int build_options(common::ObIAllocator &allocator,
+                           common::ObJsonObject *config,
+                           common::ObJsonObject *body,
+                           common::ObJsonObject *&options);
   DISALLOW_COPY_AND_ASSIGN(ObOllamaUtils);
 };
 
@@ -245,6 +253,22 @@ public:
   static int get_json_object_form_str(ObIAllocator &allocator, ObString &str, ObJsonObject *&obj_node);
   static int print_json_to_str(ObIAllocator &allocator, ObIJsonBase *base_node, ObString &str);
   static int compact_json_object(ObIAllocator &allocator, ObJsonObject *obj_node, ObJsonObject *compact_obj);
+  // Copy all members of obj_node into compact_obj except the given keys. The
+  // request body is built from trusted parts first (model, messages, input...),
+  // so user config must not overwrite those reserved fields.
+  static int compact_json_object_except(ObIAllocator &allocator,
+                                        ObJsonObject *obj_node,
+                                        const ObString *excluded_keys,
+                                        const int64_t excluded_count,
+                                        ObJsonObject *compact_obj);
+  // Get a finite numeric value from a json node. Returns OB_INVALID_ARGUMENT if
+  // the node is not a number and OB_INVALID_DATA if it is not finite.
+  static int get_json_number_value(ObIAllocator &allocator,
+                                   const ObIJsonBase *node,
+                                   double &value);
+  static bool is_reserved_json_key(const ObString &key,
+                                   const ObString *keys,
+                                   const int64_t count);
 private:
   DISALLOW_COPY_AND_ASSIGN(ObAIFuncJsonUtils);
 };
@@ -330,6 +354,17 @@ public:
                                  ObIJsonBase *&result);
   static int set_string_result(const ObExpr &expr, ObEvalCtx &ctx, ObDatum &res, ObString &res_str);
   static bool is_provider_support_base64(const ObString &provider);
+  // Validate one embedding vector: it must be a non-empty json array whose
+  // elements are finite numbers. If expected_dimension is positive the vector
+  // length must match it, otherwise the actual length is returned so callers
+  // can enforce consistency across a response.
+  static int check_embedding_vector(ObIAllocator &allocator,
+                                    const ObIJsonBase *embedding,
+                                    const int64_t expected_dimension,
+                                    int64_t &actual_dimension);
+  // Validate user provided ai_complete config: only value ranges are checked
+  // here, reserved body fields are filtered out when the request body is built.
+  static int check_complete_config(ObJsonObject *config);
   static int decode_base64_embedding_array(const ObIJsonBase &embedding_jbase, ObIAllocator &allocator,
                                            const int64_t dimension, float *&vector);
   static int decode_float_embedding_array(const ObIJsonBase &embedding_jbase, ObIAllocator &allocator,
@@ -378,10 +413,24 @@ public:
   virtual ~ObAIFuncPromptObjectUtils() {}
   static bool is_valid_prompt_object(ObJsonObject* prompt_object);
   static int replace_all_str_args_in_template(ObIAllocator &allocator, ObJsonObject* prompt_object, ObString& replaced_prompt_str);
+  // Expand a prompt object into plain text. JSON arguments are serialized,
+  // nested prompt objects are expanded recursively, "{{"/"}}" are treated as
+  // escaped braces and "{n}" is replaced by the corresponding argument.
+  static int expand_prompt_object(ObIAllocator &allocator, ObJsonObject *prompt_object, ObString &prompt_str);
   static int construct_prompt_object(ObIAllocator &allocator, ObString &template_str, ObJsonArray *args_array, ObJsonObject *&prompt_object);
   static constexpr char prompt_template_key[20] = "template";
   static constexpr char prompt_args_key[20] = "args";
+  static constexpr int64_t MAX_PROMPT_NEST_DEPTH = 16;
+  static constexpr int64_t MAX_PROMPT_RESULT_LENGTH = 16 * 1024 * 1024;
 private:
+  static int expand_prompt_object_recursive(ObIAllocator &allocator,
+                                            ObJsonObject *prompt_object,
+                                            const int64_t depth,
+                                            ObString &prompt_str);
+  static int append_arg_value(ObIAllocator &allocator,
+                              ObJsonNode *arg_node,
+                              const int64_t depth,
+                              ObStringBuffer &buffer);
   DISALLOW_COPY_AND_ASSIGN(ObAIFuncPromptObjectUtils);
 };
 
