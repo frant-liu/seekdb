@@ -222,6 +222,7 @@ public:
   bool is_wise_join() const { return is_wise_join_; }
   void set_contain_table_scan(bool v) { contain_table_scan_ = v; }
   bool contain_table_scan() const { return contain_table_scan_; }
+  common::ObSEArray<uint64_t, 8> ai_column_refs_;
   void set_has_nested_sql(bool has_nested_sql) { has_nested_sql_ = has_nested_sql; }
   bool has_nested_sql() const { return has_nested_sql_; }
   void set_session_id(uint64_t v) { session_id_ = v; }

@@ -1,0 +1,39 @@
+select 1 = 1 as existing_rows_backfilled;
+existing_rows_backfilled
+1
+select 0 = 0 as conversion_failures_reach_terminal_state;
+conversion_failures_reach_terminal_state
+1
+set session ai_column_strict_read=on;
+select id,result is null as null_result,ifnull(length(result),0) as result_length,
+number from ai_column_runtime_edges.docs order by id;
+id	null_result	result_length	number
+1	1	0	NULL
+2	0	70005	7
+select short_result from ai_column_runtime_edges.docs where id=1;
+ERROR HY000: AI column has unfinished tasks for table_id=<table_id>, column_id=<column_id>
+select id from ai_column_runtime_edges.docs d where exists(select 1 where d.short_result is null);
+ERROR HY000: AI column has unfinished tasks for table_id=<table_id>, column_id=<column_id>
+select short_result from ai_column_runtime_edges.docs where 0;
+ERROR HY000: AI column has unfinished tasks for table_id=<table_id>, column_id=<column_id>
+start transaction;
+alter table ai_column_runtime_edges.docs retry ai column result where id=2;
+rollback;
+select length(result)=70005 as retry_rollback_restores_ready_result from ai_column_runtime_edges.docs where id=2;
+retry_rollback_restores_ready_result
+1
+prepare p from 'select result is null as null_result from ai_column_runtime_edges.docs where id=1';
+execute p;
+null_result
+1
+execute p;
+ERROR HY000: AI column has unfinished tasks for table_id=<table_id>, column_id=<column_id>
+set session ai_column_strict_read=off;
+execute p;
+null_result
+1
+deallocate prepare p;
+alter table ai_column_runtime_edges.docs rename column body to renamed_body;
+ERROR 0A000: altering an AI column or its dependency not supported
+alter table ai_column_runtime_edges.docs drop column body;
+ERROR 0A000: altering an AI column or its dependency not supported

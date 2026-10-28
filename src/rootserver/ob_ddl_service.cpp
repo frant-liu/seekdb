@@ -15,6 +15,7 @@
  */
 
 #define USING_LOG_PREFIX RS
+#include "share/ai_service/ai_column_definition.h"
 
 #include "share/rc/ob_server_runtime.h"
 #include "config_bridge.h"
@@ -7773,6 +7774,7 @@ int ObDDLService::add_new_column_to_table_schema(
       alter_column_schema.set_table_id(new_table_schema.get_table_id());
       
       new_table_schema.set_max_used_column_id(max_used_column_id);
+      if (OB_SUCC(ret)) ret = share::ai_column_rebind_spec(new_table_schema, alter_column_schema);
     }
   }
   if (OB_FAIL(ret)) {

@@ -16,6 +16,8 @@
 
 #define USING_LOG_PREFIX SQL_RESV
 #include "sql/resolver/dml/ob_update_resolver.h"
+#include "share/ai_service/ai_column_definition.h"
+#include <functional>
 
 namespace oceanbase
 {
@@ -36,6 +38,10 @@ ObUpdateResolver::~ObUpdateResolver()
 
 int ObUpdateResolver::resolve(const ParseNode &parse_tree)
 {
+  if (parse_tree.reserved_ == AI_COLUMN_RETRY_UPDATE + 2) {
+    LOG_USER_ERROR(OB_NOT_SUPPORTED,"combining AI COLUMN RETRY with another ALTER action");
+    return OB_NOT_SUPPORTED;
+  }
   int ret = OB_SUCCESS;
   ObUpdateStmt *update_stmt = NULL;
   ObSEArray<ObTableAssignment, 2> tables_assign;
@@ -74,6 +80,54 @@ int ObUpdateResolver::resolve(const ParseNode &parse_tree)
   if (OB_SUCC(ret)) {
     ParseNode *table_node = parse_tree.children_[TABLE];
     if (OB_FAIL(resolve_table_list(*table_node))) {
+    }
+  }
+
+  if (OB_SUCC(ret) && parse_tree.reserved_ == AI_COLUMN_RETRY_UPDATE) {
+    auto *query = update_stmt->get_query_ctx();
+    const auto *target = update_stmt->get_table_size() == 1 ? update_stmt->get_table_item(0) : nullptr;
+    const auto *name = parse_tree.children_[UPDATE_LIST]->children_[0]->children_[0]->children_[2];
+    const ObTableSchema *table = nullptr;
+    const ObColumnSchemaV2 *column = nullptr;
+    if (query == nullptr || target == nullptr || !target->is_basic_table() || name == nullptr) ret=OB_ERR_UNEXPECTED;
+    else if (OB_FAIL(schema_checker_->get_table_schema(target->ref_id_,table))) {
+    } else if (table == nullptr) ret=OB_SCHEMA_EAGAIN;
+    else {
+      column=table->get_column_schema(ObString(name->str_len_,name->str_value_));
+      if (column == nullptr || (column->get_column_flags() & AI_RESULT_COLUMN_FLAG)==0) {
+        ret=OB_NOT_SUPPORTED;
+        LOG_USER_ERROR(OB_NOT_SUPPORTED,"retrying a column that is not an AI column");
+      } else {
+        query->ai_retry_table_id_=target->ref_id_;
+        query->ai_retry_column_id_=column->get_column_id();
+        query->disable_plan_cache_=true;
+        for (auto it=table->column_begin(); OB_SUCC(ret) && it!=table->column_end(); ++it) {
+          if (*it != nullptr && ((*it)->get_column_flags() & AI_RESULT_SPEC_COLUMN_FLAG)!=0) {
+            AiColumnDefinition d;
+            if (OB_FAIL(d.decode((*it)->get_cur_default_value()))) break;
+            if (d.column_id==column->get_column_id()) { query->ai_retry_state_id_=d.state_column_id; break; }
+          }
+        }
+        const auto *state=table->get_column_schema(query->ai_retry_state_id_);
+        if (OB_SUCC(ret) && state==nullptr) ret=OB_SCHEMA_EAGAIN;
+        if (OB_SUCC(ret)) {
+          // Rewrite only unquoted, unqualified STATUS in this retry predicate.
+          // Subqueries retain their own SQL name-resolution scope.
+          std::function<void(ParseNode *)> rewrite = [&](ParseNode *node) {
+            if (node==nullptr || node->type_==T_SELECT) return;
+            if (node->type_==T_COLUMN_REF && node->num_child_==3 && node->children_[0]==nullptr &&
+                node->children_[1]==nullptr && node->children_[2]!=nullptr) {
+              auto *identifier=node->children_[2];
+              ObString value(identifier->str_len_,identifier->str_value_);
+              if (!identifier->is_input_quoted_ && value.case_compare("status")==0) {
+                identifier->str_value_=state->get_column_name_str().ptr();
+                identifier->str_len_=state->get_column_name_str().length();
+              }
+            } else for (int64_t i=0;i<node->num_child_;++i) rewrite(node->children_[i]);
+          };
+          rewrite(parse_tree.children_[WHERE]);
+        }
+      }
     }
   }
 

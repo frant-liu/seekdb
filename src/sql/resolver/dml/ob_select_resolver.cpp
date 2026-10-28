@@ -15,6 +15,7 @@
  */
 
 #define USING_LOG_PREFIX SQL_RESV
+#include "sql/table_function/table_function.h"
 #include "sql/resolver/dml/ob_select_resolver.h"
 #include "sql/resolver/dml/ob_del_upd_resolver.h"
 #include "share/ob_time_utility2.h"
@@ -1684,7 +1685,8 @@ int ObSelectResolver::expand_target_list(
       tmp_select_item.expr_name_ = col_item.column_name_;
       tmp_select_item.is_real_alias_ = false;
       tmp_select_item.expr_ = col_item.expr_;
-      if (OB_FAIL(target_list.push_back(tmp_select_item))) {
+      if (OB_FAIL(record_ai_column_reference(col_item.expr_))) {
+      } else if (OB_FAIL(target_list.push_back(tmp_select_item))) {
       }
     }
   }
@@ -3105,7 +3107,11 @@ int ObSelectResolver::resolve_into_clause(const ParseNode *node)
       new(into_item) ObSelectIntoItem();
       into_item->into_type_ = node->type_;
       if (T_INTO_OUTFILE == node->type_) { // into outfile
-        if (is_in_set_query()) {
+        if (node->num_child_ == 2 && node->value_ == 1) {
+          ret = resolve_into_const_node(node->children_[0], into_item->outfile_name_);
+          if (OB_SUCC(ret)) ret = resolve_file_copy(*node, *session_info_, *select_stmt,
+                                                   *allocator_, into_item->external_properties_);
+        } else if (is_in_set_query()) {
           ret = OB_INAPPROPRIATE_INTO;
         } else if (node->num_child_ == 3 && NULL != node->children_[1]
             && T_EXTERNAL_FILE_FORMAT == node->children_[1]->type_) { // Handle with `FORMAT`
@@ -3232,6 +3238,7 @@ int ObSelectResolver::resolve_column_ref_expr(
   if (OB_SUCC(ret) && OB_FAIL(resolve_column_ref_in_all_namespace(q_name, real_ref_expr))) {
     LOG_WARN_IGNORE_COL_NOTFOUND(ret, "resolve column ref in all namespace failed", K(ret));
   }
+  if (OB_SUCC(ret)) ret = record_ai_column_reference(real_ref_expr);
   return ret;
 }
 

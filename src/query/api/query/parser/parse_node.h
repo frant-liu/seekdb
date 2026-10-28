@@ -37,6 +37,8 @@ extern "C" {
 #endif
 
 #define MAX_ERROR_MSG 1024
+// Trusted marker emitted only by the native RETRY AI COLUMN grammar.
+#define AI_COLUMN_RETRY_UPDATE 0x41494352
 
 struct ObCharsetInfo;
 

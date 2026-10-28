@@ -287,6 +287,7 @@ int ObExprAIEmbed::eval_ai_embed_batch(const ObExpr &expr,
               group->model_id_ = model_id;
               group->dimension_ = dimension;
               if (OB_FAIL(groups.push_back(group))) {
+                group->~EmbedBatchGroup();
               }
             }
           }
@@ -349,19 +350,26 @@ int ObExprAIEmbed::eval_ai_embed_batch(const ObExpr &expr,
             LOG_WARN("embedding result count mismatch", K(ret), K(results.count()), K(contents.count()));
           } else {
             for (int64_t i = 0; OB_SUCC(ret) && i < results.count(); i++) {
-              ObString copied_result;
+              const ObString &result = results.at(i);
               const int64_t row_idx = group->rows_.at(start + i).row_idx_;
-              if (OB_FAIL(ob_write_string(ctx.exec_ctx_.get_allocator(),
-                                          results.at(i),
-                                          copied_result))) {
+              char *result_buf = expr.get_str_res_mem(ctx, result.length(), row_idx);
+              if (OB_ISNULL(result_buf)) {
+                ret = OB_ALLOCATE_MEMORY_FAILED;
               } else {
-                res[row_idx].set_string(copied_result);
+                MEMCPY(result_buf, result.ptr(), result.length());
+                res[row_idx].set_string(result_buf, result.length());
               }
             }
           }
           start = end;
         }
       }
+    }
+
+    // The groups live in an arena, but their ObArray buffers use their own
+    // allocator and must be released on both success and failure.
+    for (int64_t g = 0; g < groups.count(); g++) {
+      groups.at(g)->~EmbedBatchGroup();
     }
 
     // Publish the batch only when every request and result copy succeeded.

@@ -198,6 +198,8 @@ OB_SERIALIZE_MEMBER(ObDMLBaseCtDef,
                     new_row_,
                     view_check_exprs_,
                     is_primary_index_,
+                    has_ai_columns_,
+                    ai_retry_column_id_,
                     is_table_without_pk_, // FARM COMPAT WHITELIST, renamed
                     reserved_advanced_trigger_,
                     trans_info_expr_,

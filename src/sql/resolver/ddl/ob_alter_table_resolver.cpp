@@ -17,6 +17,7 @@
 #define USING_LOG_PREFIX SQL_RESV
 #include "config_bridge.h"
 #include "sql/resolver/ddl/ob_alter_table_resolver.h"
+#include "sql/resolver/ddl/ai_column_binder.h"
 #include "sql/resolver/expr/ob_raw_expr_part_expr_checker.h"
 #include "sql/resolver/dml/ob_delete_resolver.h"
 #include "sql/resolver/ddl/ob_index_builder_util.h"
@@ -233,6 +234,31 @@ int ObAlterTableResolver::resolve(const ParseNode &parse_tree)
       if (OB_FAIL(get_table_schema_for_check(tbl_schema))) {
       } else if (OB_ISNULL(tbl_schema)) {
         ret = OB_ERR_UNEXPECTED;
+      }
+    }
+  }
+  // Existing definitions contain bound column IDs and SQL expression text.
+  // Reject changes which would make those bindings stale until a definition
+  // migration is implemented. Unrelated columns and indexes are unaffected.
+  if (OB_SUCC(ret) && table_schema_ != nullptr && get_alter_table_stmt() != nullptr) {
+    const auto &changes = get_alter_table_stmt()->get_alter_table_schema();
+    for (auto it=table_schema_->column_begin(); OB_SUCC(ret) && it!=table_schema_->column_end(); ++it) {
+      if (*it == nullptr || (((*it)->get_column_flags() & share::AI_RESULT_SPEC_COLUMN_FLAG)==0)) continue;
+      share::AiColumnDefinition d;
+      if (OB_FAIL(d.decode((*it)->get_cur_default_value()))) break;
+      for (auto change=changes.column_begin(); OB_SUCC(ret) && change!=changes.column_end(); ++change) {
+        const auto *column=static_cast<const AlterColumnSchema *>(*change);
+        if (column == nullptr) { ret=OB_ERR_UNEXPECTED; break; }
+        if (column->alter_type_==OB_DDL_ADD_COLUMN) continue;
+        const auto *original=table_schema_->get_column_schema(column->get_origin_column_name());
+        if (original == nullptr) continue;
+        bool bound=original->get_column_id()==d.column_id || original->get_column_id()==d.state_column_id ||
+            original->get_column_id()==d.request_column_id || original->get_column_id()==d.result_spec_column_id;
+        for (const auto &dependency:d.dependencies) bound=bound || original->get_column_id()==dependency.column_id;
+        if (bound) {
+          ret=OB_NOT_SUPPORTED;
+          LOG_USER_ERROR(OB_NOT_SUPPORTED,"altering an AI column or its dependency");
+        }
       }
     }
   }
@@ -3455,9 +3481,54 @@ int ObAlterTableResolver::resolve_add_column(const ParseNode &node, ObColumnName
 
         //add column
         if (OB_SUCC(ret)) {
-          if (OB_FAIL(alter_table_stmt->add_column(alter_column_schema))) {
-          } else if (FALSE_IT(alter_table_stmt->set_sql_mode(session_info_->get_sql_mode()))) {
+          if (node.children_[i]->num_child_ == 6) {
+            ObTableSchema bound_table;
+            share::AiColumnDefinition definition;
+            uint64_t last_id = table_schema_->get_max_used_column_id();
+            const AlterTableSchema &changes = alter_table_stmt->get_alter_table_arg().alter_table_schema_;
+            if (OB_ISNULL(params_.expr_factory_)) {
+              ret = OB_ERR_UNEXPECTED;
+            } else if (OB_FAIL(bound_table.assign(*table_schema_))) {
+            }
+            for (int64_t j = 0; OB_SUCC(ret) && j < changes.get_column_count(); ++j) {
+              const AlterColumnSchema *previous = static_cast<const AlterColumnSchema *>(changes.get_column_schema_by_idx(j));
+              if (previous == nullptr) {
+                ret = OB_ERR_UNEXPECTED;
+              } else if (previous->alter_type_ == OB_DDL_ADD_COLUMN) {
+                ObColumnSchemaV2 copy;
+                if (OB_FAIL(copy.assign(*previous))) {
+                } else {
+                  copy.set_column_id(++last_id);
+                  ret = bound_table.add_column(copy);
+                }
+              }
+            }
+            alter_column_schema.set_column_id(++last_id);
+            if (OB_FAIL(ret)) {
+            } else if (OB_FAIL(bound_table.add_column(alter_column_schema))) {
+            } else if (OB_FAIL(AiColumnBinder::bind(*params_.expr_factory_, *session_info_, bound_table,
+                alter_column_schema, *node.children_[i]->children_[4], node.children_[i]->children_[5], definition))) {
+            } else if (schema_checker_ == nullptr || schema_checker_->get_schema_guard() == nullptr) {
+          ret = OB_ERR_UNEXPECTED;
+        } else if (OB_FAIL(AiColumnBinder::validate_model(params_.expr_factory_->get_allocator(),
+            *schema_checker_->get_schema_guard(), definition))) {
+        } else if (OB_FAIL(AiColumnBinder::add_hidden_columns(bound_table, definition, last_id))) {
+            } else if (OB_FAIL(alter_table_stmt->add_column(alter_column_schema))) {
+            } else {
+              const uint64_t ids[] = {definition.state_column_id, definition.request_column_id, definition.result_spec_column_id};
+              for (uint64_t id : ids) {
+                if (OB_FAIL(ret)) break;
+                AlterColumnSchema hidden;
+                if (OB_FAIL(hidden.assign(*bound_table.get_column_schema(id)))) {
+                } else {
+                  hidden.alter_type_ = OB_DDL_ADD_COLUMN;
+                  ret = alter_table_stmt->add_column(hidden);
+                }
+              }
+            }
+          } else if (OB_FAIL(alter_table_stmt->add_column(alter_column_schema))) {
           }
+          if (OB_SUCC(ret)) alter_table_stmt->set_sql_mode(session_info_->get_sql_mode());
         }
       }
     }

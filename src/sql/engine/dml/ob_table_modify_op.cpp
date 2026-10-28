@@ -17,6 +17,7 @@
 #define USING_LOG_PREFIX SQL_ENG
 
 #include "ob_table_modify_op.h"
+#include "sql/engine/dml/ai_column_dml.h"
 #include "share/ob_autoincrement_service.h"
 #include "query/session/ob_inner_sql_connection_access.h"
 #include "sql/engine/ob_physical_plan.h"
@@ -1052,11 +1053,19 @@ int ObTableModifyOp::submit_all_dml_task()
 {
   int ret = OB_SUCCESS;
   if (dml_rtctx_.das_ref_.has_task()) {
+    bool native_after_rows = false;
+    for (auto it = dml_modify_rows_.begin(); it != dml_modify_rows_.end(); ++it) {
+      if ((*it).dml_ctdef_ != nullptr &&
+          (need_foreign_key_check(*(*it).dml_ctdef_) || has_after_row_trigger(*(*it).dml_ctdef_))) {
+        native_after_rows = true;
+      }
+    }
     if (dml_rtctx_.need_pick_del_task_first() &&
                 OB_FAIL(dml_rtctx_.das_ref_.pick_del_task_to_first())) {
     } else if (OB_FAIL(dml_rtctx_.das_ref_.execute_all_task())) {
     } else if (OB_FAIL(dml_rtctx_.das_ref_.close_all_task())) {
-    } else if (OB_FAIL(ObDMLService::handle_after_row_processing(this, &get_dml_modify_row_list()))) {
+    } else if (native_after_rows && OB_FAIL(ObDMLService::handle_after_row_processing(this, &get_dml_modify_row_list()))) {
+    } else if (OB_FAIL(AiColumnDml::process_rows(*this))) {
     } else {
       dml_modify_rows_.clear();
       dml_rtctx_.reuse();

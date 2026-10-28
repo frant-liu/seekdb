@@ -16,6 +16,7 @@
 
 #define USING_LOG_PREFIX SHARE_SCHEMA
 #include "sql/printer/ob_schema_printer.h"
+#include "share/ai_service/ai_column_definition.h"
 #include "share/ob_autoincrement_service.h"
 #include "sql/resolver/expr/ob_raw_expr_util.h"
 
@@ -207,6 +208,29 @@ int ObSchemaPrinter::print_table_definition_columns(const ObTableSchema &table_s
         if (OB_SUCC(ret) && col->is_invisible_column()) {
           if (OB_FAIL(databuff_printf(buf, buf_len, pos, " INVISIBLE"))) {
           }
+        }
+        if (OB_SUCC(ret) && (col->get_column_flags() & share::AI_RESULT_COLUMN_FLAG) != 0) {
+          bool found_definition = false;
+          for (ObTableSchema::const_column_iterator ai_it = table_schema.column_begin();
+               OB_SUCC(ret) && !found_definition && ai_it != table_schema.column_end(); ++ai_it) {
+            if (*ai_it == nullptr) {
+              ret = OB_ERR_UNEXPECTED;
+            } else if (((*ai_it)->get_column_flags() & share::AI_RESULT_SPEC_COLUMN_FLAG) != 0) {
+              share::AiColumnDefinition definition;
+              if (!(*ai_it)->get_cur_default_value().is_string_type()) {
+                ret = OB_ERR_UNEXPECTED;
+              } else if (OB_FAIL(definition.decode((*ai_it)->get_cur_default_value()))) {
+              } else if (definition.column_id == col->get_column_id()) {
+                found_definition = true;
+                ret = databuff_printf(buf, buf_len, pos,
+                    " AI COLUMN (%.*s) WITH (sync_mode='async', max_retries=%ld)",
+                    static_cast<int>(definition.normalized_expr.size()), definition.normalized_expr.data(),
+                    definition.max_retries);
+              }
+            }
+          }
+          if (OB_SUCC(ret) && !found_definition) ret = OB_ERR_UNEXPECTED;
+          continue;
         }
         if (OB_SUCC(ret) && col->is_generated_column()) {
           if (OB_FAIL(print_generated_column_definition(*col, buf, buf_len, table_schema, pos))) {

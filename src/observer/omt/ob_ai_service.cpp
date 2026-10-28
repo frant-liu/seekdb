@@ -53,6 +53,7 @@ int ObAiService::init()
   int ret = OB_SUCCESS;
   if (IS_INIT) {
     ret = OB_INIT_TWICE;
+  } else if (OB_FAIL(worker_.init())) {
   } else {
     is_inited_ = true;
   }
@@ -61,6 +62,8 @@ int ObAiService::init()
 
 void ObAiService::destroy()
 {
+  stop();
+  wait();
   is_inited_ = false;
 }
 

@@ -1,0 +1,21 @@
+call DBMS_AI_SERVICE.CREATE_AI_MODEL('keyless_lifecycle', '{"type":"completion","model_name":"local-model"}');
+call DBMS_AI_SERVICE.CREATE_AI_MODEL_ENDPOINT('keyless_lifecycle_ep', '{"ai_model_name":"keyless_lifecycle","scope":"all","url":"http://127.0.0.1:8000/api/generate","access_key":"","provider":"ollama"}');
+call DBMS_AI_SERVICE.ALTER_AI_MODEL_ENDPOINT('keyless_lifecycle_ep', '{"provider":"Ollama"}');
+call DBMS_AI_SERVICE.ALTER_AI_MODEL_ENDPOINT('keyless_lifecycle_ep', '{"access_key":""}');
+select provider from oceanbase.DBA_OB_AI_MODEL_ENDPOINTS where endpoint_name = 'keyless_lifecycle_ep';
+provider
+Ollama
+call DBMS_AI_SERVICE.ALTER_AI_MODEL_ENDPOINT('keyless_lifecycle_ep', '{"provider":"openai","access_key":"test-key"}');
+call DBMS_AI_SERVICE.ALTER_AI_MODEL_ENDPOINT('keyless_lifecycle_ep', '{"provider":"OLLAMA","access_key":""}');
+call DBMS_AI_SERVICE.ALTER_AI_MODEL_ENDPOINT('keyless_lifecycle_ep', '{"url":"http://127.0.0.1:8000/api/generate"}');
+select provider from oceanbase.DBA_OB_AI_MODEL_ENDPOINTS where endpoint_name = 'keyless_lifecycle_ep';
+provider
+OLLAMA
+call DBMS_AI_SERVICE.DROP_AI_MODEL_ENDPOINT('keyless_lifecycle_ep');
+call DBMS_AI_SERVICE.CREATE_AI_MODEL_ENDPOINT('keyless_lifecycle_ep', '{"ai_model_name":"keyless_lifecycle","scope":"all","url":"http://127.0.0.1:8000/api/generate","provider":"ollama"}');
+call DBMS_AI_SERVICE.ALTER_AI_MODEL_ENDPOINT('keyless_lifecycle_ep', '{"provider":"Ollama"}');
+select provider from oceanbase.DBA_OB_AI_MODEL_ENDPOINTS where endpoint_name = 'keyless_lifecycle_ep';
+provider
+Ollama
+call DBMS_AI_SERVICE.DROP_AI_MODEL_ENDPOINT('keyless_lifecycle_ep');
+call DBMS_AI_SERVICE.DROP_AI_MODEL('keyless_lifecycle');

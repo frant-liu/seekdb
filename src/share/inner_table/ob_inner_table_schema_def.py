@@ -2447,6 +2447,56 @@ all_ai_model_endpoint_def = dict(
 def_table_schema(**all_ai_model_endpoint_def)
 
 
+all_ai_column_def = dict(
+    owner = 'sql',
+    table_name = '__all_ai_column',
+    table_id = '1131',
+    table_type = 'SYSTEM_TABLE',
+    gm_columns = ['gmt_create', 'gmt_modified'],
+    rowkey_columns = [('table_id', 'int'), ('column_id', 'int')],
+    is_cluster_private = False,
+    meta_record_in_sys = False,
+    normal_columns = [
+        ('column_name', 'varchar:128', 'false'),
+        ('definition_version', 'int', 'false'),
+        ('state_column_id', 'int', 'false'),
+        ('request_column_id', 'int', 'false'),
+        ('result_spec_column_id', 'int', 'false'),
+        ('expression', 'longtext', 'false'),
+        ('normalized_expr', 'longtext', 'false'),
+        ('definition', 'longtext', 'false'),
+        ('sync_mode', 'varchar:16', 'false'),
+        ('max_retries', 'int', 'false')
+    ]
+)
+def_table_schema(**all_ai_column_def)
+
+all_ai_column_task_def = dict(
+    owner = 'sql',
+    table_name = '__all_ai_column_task',
+    table_id = '1132',
+    table_type = 'SYSTEM_TABLE',
+    gm_columns = ['gmt_create', 'gmt_modified'],
+    rowkey_columns = [('table_id', 'int'), ('column_id', 'int'), ('request_id', 'varchar:64')],
+    is_cluster_private = False,
+    meta_record_in_sys = False,
+    normal_columns = [
+        ('definition_version', 'int', 'false'),
+        ('rowkey_predicate', 'longtext', 'false'),
+        ('model_input', 'longtext', 'true'),
+        ('model_config', 'longtext', 'true'),
+        ('state', 'int', 'false', 0),
+        ('retry_count', 'int', 'false', 0),
+        ('eligible_ts', 'timestamp', 'false'),
+        ('lease_owner', 'varchar:64', 'true'),
+        ('lease_expiry', 'timestamp', 'true'),
+        ('result', 'longtext', 'true'),
+        ('last_error', 'varchar:2048', 'true')
+    ]
+)
+def_table_schema(**all_ai_column_task_def)
+
+
 all_objauth_mysql_def = dict(
     owner = 'cjl476581',
     table_name     = '__all_objauth_mysql',

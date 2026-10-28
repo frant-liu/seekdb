@@ -1,0 +1,37 @@
+# Native file decoding, path boundaries and COPY failure cleanup.
+--source mysql_test/test_suite/file_sql/include/copy_file_sql_edge_data.inc
+--disable_query_log
+set enable_file_sql=ON;
+eval select count(*)=2 and min(d)='2024-02-29' and min(t)='1969-12-31 12:34:56' and max(t)='1970-01-01 00:00:00.000001' and sum(n is null)=2 as inferred_types_ok from read_csv('$FILE_SQL_EDGE_DIR/types.csv');
+eval select wide from read_csv('$FILE_SQL_EDGE_DIR/types.csv') order by id;
+--disable_result_log
+--error 1210
+eval select * from read_csv('$FILE_SQL_EDGE_DIR/bad.csv');
+--error 1210
+eval select * from read_csv('$FILE_SQL_EDGE_DIR/utf8.csv');
+--error 1210
+eval select * from read_json('$FILE_SQL_EDGE_DIR/nested.jsonl');
+--error 1210
+eval select * from read_json('$FILE_SQL_EDGE_DIR/array.jsonl');
+--error 1227
+select * from read_csv('/etc/passwd');
+--error 1227
+eval select * from read_csv('$FILE_SQL_EDGE_DIR/escape.csv');
+--error 1210
+eval select * from read_csv('$FILE_SQL_EDGE_DIR');
+--error 1242
+eval copy (select case when g.generator=1 then 1 else (select s.generator from generator(2) s) end as id from generator(2) g) to '$FILE_SQL_EDGE_DIR/failed.csv' (header);
+--enable_result_log
+eval select count(*)=0 as failed_copy_target_absent from glob('$FILE_SQL_EDGE_DIR/failed.csv');
+eval select count(*)=0 as failed_copy_temp_absent from glob('$FILE_SQL_EDGE_DIR/.seekdb-copy-*');
+eval select '1.0-NONE-False' as variant, count(*)=9 and sum(id)=42 and sum(flag)=4 and sum(empty is null)=9 and sum(text is null)=1 and min(day)='1970-01-01' and min(time)='1969-12-31 00:00:00' as codec_ok from read_parquet('$FILE_SQL_EDGE_DIR/1.0-NONE-False.parquet');
+eval select '1.0-NONE-True' as variant, count(*)=9 and sum(id)=42 and sum(flag)=4 and sum(empty is null)=9 and sum(text is null)=1 and min(day)='1970-01-01' and min(time)='1969-12-31 00:00:00' as codec_ok from read_parquet('$FILE_SQL_EDGE_DIR/1.0-NONE-True.parquet');
+eval select '1.0-SNAPPY-False' as variant, count(*)=9 and sum(id)=42 and sum(flag)=4 and sum(empty is null)=9 and sum(text is null)=1 and min(day)='1970-01-01' and min(time)='1969-12-31 00:00:00' as codec_ok from read_parquet('$FILE_SQL_EDGE_DIR/1.0-SNAPPY-False.parquet');
+eval select '1.0-SNAPPY-True' as variant, count(*)=9 and sum(id)=42 and sum(flag)=4 and sum(empty is null)=9 and sum(text is null)=1 and min(day)='1970-01-01' and min(time)='1969-12-31 00:00:00' as codec_ok from read_parquet('$FILE_SQL_EDGE_DIR/1.0-SNAPPY-True.parquet');
+eval select '2.0-NONE-False' as variant, count(*)=9 and sum(id)=42 and sum(flag)=4 and sum(empty is null)=9 and sum(text is null)=1 and min(day)='1970-01-01' and min(time)='1969-12-31 00:00:00' as codec_ok from read_parquet('$FILE_SQL_EDGE_DIR/2.0-NONE-False.parquet');
+eval select '2.0-NONE-True' as variant, count(*)=9 and sum(id)=42 and sum(flag)=4 and sum(empty is null)=9 and sum(text is null)=1 and min(day)='1970-01-01' and min(time)='1969-12-31 00:00:00' as codec_ok from read_parquet('$FILE_SQL_EDGE_DIR/2.0-NONE-True.parquet');
+eval select '2.0-SNAPPY-False' as variant, count(*)=9 and sum(id)=42 and sum(flag)=4 and sum(empty is null)=9 and sum(text is null)=1 and min(day)='1970-01-01' and min(time)='1969-12-31 00:00:00' as codec_ok from read_parquet('$FILE_SQL_EDGE_DIR/2.0-SNAPPY-False.parquet');
+eval select '2.0-SNAPPY-True' as variant, count(*)=9 and sum(id)=42 and sum(flag)=4 and sum(empty is null)=9 and sum(text is null)=1 and min(day)='1970-01-01' and min(time)='1969-12-31 00:00:00' as codec_ok from read_parquet('$FILE_SQL_EDGE_DIR/2.0-SNAPPY-True.parquet');
+set enable_file_sql=OFF;
+--enable_query_log
+--source mysql_test/test_suite/file_sql/include/remove_file_sql_data.inc

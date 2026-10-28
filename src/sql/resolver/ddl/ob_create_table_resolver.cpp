@@ -16,6 +16,7 @@
 
 #define USING_LOG_PREFIX SQL_RESV
 #include "sql/resolver/ddl/ob_create_table_resolver.h"
+#include "sql/resolver/ddl/ai_column_binder.h"
 #include "sql/resolver/dml/ob_select_resolver.h"
 #include "sql/resolver/ddl/ob_fts_index_builder_util.h"
 #include "sql/rewrite/ob_transform_utils.h"
@@ -881,6 +882,31 @@ int ObCreateTableResolver::resolve_table_elements(const ParseNode *node,
         // won't be here
         ret = OB_ERR_UNEXPECTED;
         SQL_RESV_LOG(WARN, "unexpected branch", K(ret));
+      }
+    }
+
+    // Bind AI definitions only after all user column types and flags are known.
+    // This also rejects forward references to another AI result column.
+    if (RESOLVE_NON_COL != resolve_rule) {
+      for (int32_t i = 0; OB_SUCC(ret) && i < node->num_child_; ++i) {
+        ParseNode *element = node->children_[i];
+        if (element->type_ != T_COLUMN_DEFINITION || element->num_child_ != 6) continue;
+        ObString name;
+        share::AiColumnDefinition definition;
+        const ObColumnSchemaV2 *result_column = nullptr;
+        if (OB_ISNULL(params_.expr_factory_)) {
+          ret = OB_ERR_UNEXPECTED;
+        } else if (OB_FAIL(resolve_column_name(name, element->children_[0]->children_[2]))) {
+        } else if (OB_ISNULL(result_column = table_schema.get_column_schema(name))) {
+          ret = OB_ERR_UNEXPECTED;
+        } else if (OB_FAIL(AiColumnBinder::bind(*params_.expr_factory_, *session_info_,
+            table_schema, *result_column, *element->children_[4], element->children_[5], definition))) {
+        } else if (schema_checker_ == nullptr || schema_checker_->get_schema_guard() == nullptr) {
+          ret = OB_ERR_UNEXPECTED;
+        } else if (OB_FAIL(AiColumnBinder::validate_model(params_.expr_factory_->get_allocator(),
+            *schema_checker_->get_schema_guard(), definition))) {
+        } else if (OB_FAIL(AiColumnBinder::add_hidden_columns(table_schema, definition, cur_column_id_))) {
+        }
       }
     }
 

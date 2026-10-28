@@ -107,6 +107,7 @@ int deep_copy_parse_node_base(void *malloc_pool, const ParseNode *src_node, Pars
     dst_node->num_child_ = src_node->num_child_;
     dst_node->param_num_ = src_node->param_num_;
     dst_node->flag_ = src_node->flag_;
+    dst_node->reserved_ = src_node->reserved_;
     dst_node->value_ = src_node->value_;
     dst_node->pos_ = src_node->pos_;
     dst_node->stmt_loc_ = src_node->stmt_loc_;

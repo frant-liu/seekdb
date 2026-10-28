@@ -1,0 +1,26 @@
+# Native plan, rescans, aliases, NULLs and exclusive COPY regression.
+--source mysql_test/test_suite/file_sql/include/copy_file_sql_data.inc
+--disable_query_log
+let $FILE_SQL_DATA_DIR = $OBSERVER_DIR/data_for_mysqltest_file_sql;
+set session enable_file_sql=ON;
+eval select count(*)=3 as inner_join_ok from read_csv('$FILE_SQL_DATA_DIR/basic.csv') c inner join read_ndjson('$FILE_SQL_DATA_DIR/basic.jsonl') j on c.id=j.id;
+eval select count(*)=3 and sum(j.id is null)=1 as left_join_ok from read_csv('$FILE_SQL_DATA_DIR/basic.csv') c left join read_json('$FILE_SQL_DATA_DIR/basic.jsonl') j on c.id=j.id and j.id<>2;
+eval select sum(x.id)=6 as rescan_ok from read_csv('$FILE_SQL_DATA_DIR/basic.csv') x where exists (select 1 from read_csv('$FILE_SQL_DATA_DIR/basic.csv') y where y.id=x.id);
+eval select sum(score is null)=1 and sum(day is null)=2 as missing_fields_ok from read_ndjson('$FILE_SQL_DATA_DIR/basic.jsonl');
+eval select count(*)=7 as zero_projection_ok from read_parquet('$FILE_SQL_DATA_DIR/simple.parquet');
+eval select sum(c1)=21 as repeated_scan_ok from read_parquet('$FILE_SQL_DATA_DIR/simple.parquet');
+eval select sum(active)=2 as aliases_ok from read_csv('$FILE_SQL_DATA_DIR/basic.csv') as c;
+eval select sum(n)=2 as group_having_ok from (select active,count(*) n from read_csv('$FILE_SQL_DATA_DIR/basic.csv') group by active having count(*)>1) g;
+eval copy (select id,name,note,day from read_csv('$FILE_SQL_DATA_DIR/basic.csv') order by id) to '$FILE_SQL_DATA_DIR/regression.csv' (format csv,header,delimiter ';',quote '"',escape '"',nullstr 'NULL');
+eval select count(*)=3 and sum(day is null)=1 and sum(note like '%hi%')=1 as copy_roundtrip_ok from read_csv('$FILE_SQL_DATA_DIR/regression.csv',delimiter=';',nullstr='NULL');
+--disable_result_log
+--error 1210
+eval copy (select 99 as id) to '$FILE_SQL_DATA_DIR/regression.csv' (header);
+--error 1235
+eval select count(*) from read_csv('$FILE_SQL_DATA_DIR/basic.csv', sample_size=2);
+set session enable_file_sql=OFF;
+--error 1235
+eval select count(*) from read_csv('$FILE_SQL_DATA_DIR/basic.csv');
+--enable_result_log
+--enable_query_log
+--source mysql_test/test_suite/file_sql/include/remove_file_sql_data.inc

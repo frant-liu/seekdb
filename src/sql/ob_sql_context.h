@@ -585,15 +585,22 @@ public:
       injected_random_status_(false),
       ori_question_marks_count_(0),
       type_demotion_flag_(0),
-      has_hybrid_search_(false)
+      disable_plan_cache_(false)
   {
   }
   TO_STRING_KV(N_PARAM_NUM, question_marks_count_,
                N_FETCH_CUR_TIME, fetch_cur_time_,
                K_(calculable_items));
 
+  // Captured during name resolution, before transformations can prune a reference.
+  common::ObSEArray<uint64_t, 8> ai_column_refs_;
+  uint64_t ai_retry_table_id_ = 0;
+  uint64_t ai_retry_column_id_ = 0;
+  uint64_t ai_retry_state_id_ = 0;
   void reset()
   {
+    ai_column_refs_.reset();
+    ai_retry_table_id_ = ai_retry_column_id_ = ai_retry_state_id_ = 0;
     question_marks_count_ = 0;
     calculable_items_.reset();
     fetch_cur_time_ = true;
@@ -628,7 +635,7 @@ public:
     ori_question_marks_count_ = 0;
     filter_ds_stat_cache_.reuse();
     type_demotion_flag_ = 0;
-    has_hybrid_search_ = false;
+    disable_plan_cache_ = false;
   }
 
   int64_t get_new_stmt_id() { return stmt_count_++; }
@@ -665,7 +672,7 @@ public:
     ori_question_marks_count_ = count;
     question_marks_count_ = count;
   };
-  bool has_hybrid_search() const { return has_hybrid_search_; }
+  bool disable_plan_cache() const { return disable_plan_cache_; }
 
 public:
   static const int64_t CALCULABLE_EXPR_NUM = 1;
@@ -738,7 +745,7 @@ public:
       int8_t type_demotion_flag_reserved_   : 4;
     };
   };
-  bool has_hybrid_search_;
+  bool disable_plan_cache_;
 };
 
 } /* ns sql*/

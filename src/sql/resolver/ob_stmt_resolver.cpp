@@ -215,12 +215,15 @@ int ObStmtResolver::get_column_schema(const uint64_t table_id,
     ret = OB_NOT_INIT;
     SQL_RESV_LOG(WARN, "not init", K(ret), KP(schema_checker_), KP(session_info_));
   } else {
-    const bool hidden = get_hidden || session_info_->is_inner();
+    const bool hidden = get_hidden || session_info_->is_inner() ||
+        session_info_->is_ai_column_internal_write();
 
     // Generated columns added by function-based indexes are hidden but may
     // still be selected through this path.
     if (OB_FAIL(schema_checker_->get_column_schema( table_id, column_name, column_schema, true, is_link))) {
-    } else if (!hidden && column_schema->is_hidden() && !column_schema->is_generated_column()) {
+    } else if (!hidden && column_schema->is_hidden() && !column_schema->is_generated_column() &&
+          !(params_.query_ctx_ != nullptr && params_.query_ctx_->ai_retry_table_id_ == table_id &&
+            params_.query_ctx_->ai_retry_state_id_ == column_schema->get_column_id())) {
       ret = OB_ERR_BAD_FIELD_ERROR;
       LOG_INFO("do not get hidden column", K(table_id), K(column_name), K(ret));
     }
@@ -239,8 +242,11 @@ int ObStmtResolver::get_column_schema(const uint64_t table_id,
     ret = OB_NOT_INIT;
     SQL_RESV_LOG(WARN, "not init", K(ret), KP(schema_checker_), KP(session_info_));
   } else {
-    const bool hidden = get_hidden || session_info_->is_inner();
-    if (OB_FAIL(schema_checker_->get_column_schema( table_id, column_id, column_schema, hidden, is_link))) {
+    const bool hidden = get_hidden || session_info_->is_inner() ||
+        session_info_->is_ai_column_internal_write();
+    if (OB_FAIL(schema_checker_->get_column_schema( table_id, column_id, column_schema,
+          hidden || (params_.query_ctx_ != nullptr && params_.query_ctx_->ai_retry_table_id_ == table_id &&
+                     params_.query_ctx_->ai_retry_state_id_ == column_id), is_link))) {
     }
   }
   return ret;

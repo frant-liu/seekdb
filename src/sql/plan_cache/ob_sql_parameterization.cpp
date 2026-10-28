@@ -292,6 +292,16 @@ bool ObSqlParameterization::is_tree_not_param(const ParseNode *tree)
     ret_bool = true;
   } else if (true == tree->is_tree_not_param_) {
     ret_bool = true;
+  } else if (T_TABLE_FUNCTION_CALL == tree->type_ && tree->num_child_ > 0
+             && tree->children_[0] != nullptr) {
+    // Local file schemas depend on their literal path and reader options.
+    const ParseNode *node = tree->children_[0];
+    const ObString name(node->str_len_, node->str_value_);
+    ret_bool = name.case_compare("read_csv") == 0 || name.case_compare("read_json") == 0
+            || name.case_compare("read_ndjson") == 0 || name.case_compare("read_parquet") == 0
+            || name.case_compare("glob") == 0;
+  } else if (T_INTO_OUTFILE == tree->type_ && tree->value_ == 1 && tree->num_child_ == 2) {
+    ret_bool = true;
   } else if (T_GROUPBY_CLAUSE == tree->type_) {
     // select a from t group by 1 enables group by parameterization
     ret_bool = true;

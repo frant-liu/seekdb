@@ -17,6 +17,7 @@
 #define USING_LOG_PREFIX SQL_RESV
 #include "config_bridge.h"
 #include "ob_ddl_resolver.h"
+#include "share/ai_service/ai_column_definition.h"
 #include "data_plane/blocksstable/ob_index_block_util.h"
 #include "sql/resolver/dml/ob_dml_resolver.h"
 #include "sql/resolver/ddl/ob_index_builder_util.h"
@@ -1773,6 +1774,15 @@ int ObDDLResolver::resolve_column_definition(ObColumnSchemaV2 &column,
                                              const bool allow_has_default)
 {
   int ret = OB_SUCCESS;
+  if (node != nullptr && node->num_child_ == 6) {
+    if (stmt_->get_stmt_type() != stmt::T_CREATE_TABLE &&
+        (stmt_->get_stmt_type() != stmt::T_ALTER_TABLE ||
+         static_cast<AlterColumnSchema &>(column).alter_type_ != OB_DDL_ADD_COLUMN)) {
+      LOG_USER_ERROR(OB_NOT_SUPPORTED, "MODIFY AI column definition is not implemented");
+      return OB_NOT_SUPPORTED;
+    }
+    column.add_column_flag(share::AI_RESULT_COLUMN_FLAG);
+  }
   bool is_modify_column = stmt::T_ALTER_TABLE == stmt_->get_stmt_type()
                   && OB_DDL_MODIFY_COLUMN == (static_cast<AlterColumnSchema &>(column)).alter_type_;
   ParseNode *column_definition_ref_node = NULL;

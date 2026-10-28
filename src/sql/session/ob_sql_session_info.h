@@ -401,6 +401,13 @@ public:
 
 
 public:
+private:
+  // A kernel-only capability. This is deliberately not a user-settable variable.
+  int64_t ai_column_internal_write_depth_ = 0;
+public:
+  bool is_ai_column_internal_write() const { return ai_column_internal_write_depth_ != 0; }
+  void enter_ai_column_internal_write() { ++ai_column_internal_write_depth_; }
+  void leave_ai_column_internal_write() { --ai_column_internal_write_depth_; }
   ObSQLSessionInfo();
   virtual ~ObSQLSessionInfo();
 

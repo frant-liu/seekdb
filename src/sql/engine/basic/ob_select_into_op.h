@@ -17,6 +17,7 @@
 #ifndef SRC_SQL_ENGINE_BASIC_OB_SELECT_INTO_OP_H_
 #define SRC_SQL_ENGINE_BASIC_OB_SELECT_INTO_OP_H_
 
+#include "sql/table_function/table_function.h"
 #include "sql/engine/ob_operator.h"
 #include "lib/file/ob_file.h"
 #include "sql/engine/cmd/ob_load_data_parser.h"
@@ -126,7 +127,7 @@ public:
       external_properties_(),
       format_type_(ObExternalFileFormat::FormatType::CSV_FORMAT),
       block_id_(0),
-      need_commit_(true)
+      need_commit_(true), copy_sink_(nullptr), copy_done_(false)
   {
   }
 
@@ -200,6 +201,8 @@ private:
   void set_csv_format_options();
 
   int get_row_str(const int64_t buf_len, bool is_first_row, char *buf, int64_t &pos);
+  int copy_rows(bool batch, int64_t max_row_cnt);
+  int copy_current_row();
   int into_dumpfile(ObExternalFileWriter *data_writer);
   int into_outfile(ObExternalFileWriter *data_writer);
   int into_outfile_batch_csv(const ObBatchRows &brs, ObExternalFileWriter *data_writer);
@@ -292,6 +295,8 @@ private:
   ObExternalFileFormat::FormatType format_type_;
   uint32_t block_id_;
   bool need_commit_;
+  IFileCopySink *copy_sink_;
+  bool copy_done_;
   static const int64_t SHARED_BUFFER_SIZE = 2LL * 1024 * 1024;
 
 };

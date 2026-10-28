@@ -1,0 +1,90 @@
+# NULL is a READY result; failed conversion must terminate without blocking peers.
+connection default;
+--disable_query_log
+--exec python3 mysql_test/test_suite/ai_column/include/ai_column_mock.py start 19124
+--disable_warnings
+drop database if exists ai_column_runtime_edges;
+--enable_warnings
+create database ai_column_runtime_edges;
+--error 0,11112
+call DBMS_AI_SERVICE.DROP_AI_MODEL_ENDPOINT('runtime_edges_ep');
+--error 0,11118
+call DBMS_AI_SERVICE.DROP_AI_MODEL('runtime_edges_model');
+call DBMS_AI_SERVICE.CREATE_AI_MODEL('runtime_edges_model', '{"type":"completion","model_name":"mock-complete"}');
+call DBMS_AI_SERVICE.CREATE_AI_MODEL_ENDPOINT('runtime_edges_ep', '{"ai_model_name":"runtime_edges_model","url":"http://127.0.0.1:19124/v1/chat/completions","access_key":"mock-key","provider":"openai"}');
+create table ai_column_runtime_edges.existing(id int primary key, body varchar(100));
+insert into ai_column_runtime_edges.existing values(1,'existing-one'),(2,'existing-two');
+alter table ai_column_runtime_edges.existing add result varchar(200)
+ AI COLUMN(AI_COMPLETE('runtime_edges_model',body)) WITH(max_retries=0);
+let $retry = 200;
+let $ready = 0;
+while ($retry)
+{
+ let $ready = `select count(*)=2 from ai_column_runtime_edges.existing where result=concat('mock:',body)`;
+ if ($ready == 1) { let $retry = 0; }
+ if ($ready == 0) { --real_sleep 0.1
+ dec $retry; }
+}
+--enable_query_log
+eval select $ready = 1 as existing_rows_backfilled;
+--disable_query_log
+create table ai_column_runtime_edges.docs(
+ id bigint primary key,
+ body longtext,
+ result longtext AI COLUMN(AI_COMPLETE('runtime_edges_model',body)) WITH(max_retries=0),
+ number tinyint unsigned AI COLUMN(AI_COMPLETE('runtime_edges_model',body)) WITH(max_retries=0),
+ short_result varchar(2) AI COLUMN(AI_COMPLETE('runtime_edges_model',body)) WITH(max_retries=0)
+);
+insert into ai_column_runtime_edges.docs(id,body) values(1,NULL),(2,repeat('x',70000));
+let $retry = 200;
+let $tasks = 1;
+while ($retry)
+{
+ let $tasks = `select count(*) from oceanbase.__all_ai_column_task task
+ join oceanbase.__all_table t on t.table_id=task.table_id
+ join oceanbase.__all_database d on d.database_id=t.database_id
+ where d.database_name='ai_column_runtime_edges'`;
+ if ($tasks == 0) { let $retry = 0; }
+ if ($tasks != 0) { --real_sleep 0.1
+ dec $retry; }
+}
+--enable_query_log
+eval select $tasks = 0 as conversion_failures_reach_terminal_state;
+set session ai_column_strict_read=on;
+select id,result is null as null_result,ifnull(length(result),0) as result_length,
+ number from ai_column_runtime_edges.docs order by id;
+--replace_regex /table_id=[0-9]+, column_id=[0-9]+/table_id=<table_id>, column_id=<column_id>/
+--error 11120
+select short_result from ai_column_runtime_edges.docs where id=1;
+--replace_regex /table_id=[0-9]+, column_id=[0-9]+/table_id=<table_id>, column_id=<column_id>/
+--error 11120
+select id from ai_column_runtime_edges.docs d where exists(select 1 where d.short_result is null);
+--replace_regex /table_id=[0-9]+, column_id=[0-9]+/table_id=<table_id>, column_id=<column_id>/
+--error 11120
+select short_result from ai_column_runtime_edges.docs where 0;
+start transaction;
+alter table ai_column_runtime_edges.docs retry ai column result where id=2;
+rollback;
+select length(result)=70005 as retry_rollback_restores_ready_result from ai_column_runtime_edges.docs where id=2;
+# A cached/prepared plan must check current readiness on every execution.
+prepare p from 'select result is null as null_result from ai_column_runtime_edges.docs where id=1';
+execute p;
+--disable_query_log
+--exec python3 mysql_test/test_suite/ai_column/include/ai_column_mock.py stop 19124
+update ai_column_runtime_edges.docs set body='offline' where id=1;
+--enable_query_log
+--replace_regex /table_id=[0-9]+, column_id=[0-9]+/table_id=<table_id>, column_id=<column_id>/
+--error 11120
+execute p;
+set session ai_column_strict_read=off;
+execute p;
+deallocate prepare p;
+--error 1235
+alter table ai_column_runtime_edges.docs rename column body to renamed_body;
+--error 1235
+alter table ai_column_runtime_edges.docs drop column body;
+--disable_query_log
+drop database ai_column_runtime_edges;
+call DBMS_AI_SERVICE.DROP_AI_MODEL_ENDPOINT('runtime_edges_ep');
+call DBMS_AI_SERVICE.DROP_AI_MODEL('runtime_edges_model');
+--exec python3 mysql_test/test_suite/ai_column/include/ai_column_mock.py stop 19124

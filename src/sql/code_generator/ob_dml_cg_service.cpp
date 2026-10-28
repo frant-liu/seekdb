@@ -16,6 +16,7 @@
 
 #define USING_LOG_PREFIX SQL_CG
 #include "ob_dml_cg_service.h"
+#include "share/ai_service/ai_column_definition.h"
 #include "sql/code_generator/ob_static_engine_cg.h"
 #include "sql/engine/ob_physical_plan.h"
 #include "sql/parser/ob_parser.h"
@@ -2094,6 +2095,27 @@ int ObDmlCgService::generate_dml_base_ctdef(ObLogicalOperator &op,
 {
   int ret = OB_SUCCESS;
   dml_base_ctdef.is_primary_index_ = index_dml_info.is_primary_index_;
+  dml_base_ctdef.has_ai_columns_ = false;
+  auto *ai_query = op.get_plan()->get_stmt()->get_query_ctx();
+  if (ai_query != nullptr && ai_query->ai_retry_table_id_ == index_dml_info.ref_table_id_) {
+    dml_base_ctdef.ai_retry_column_id_ = ai_query->ai_retry_column_id_;
+  }
+  if (index_dml_info.is_primary_index_) {
+    const share::schema::ObTableSchema *ai_table = nullptr;
+    auto *guard = op.get_plan()->get_optimizer_context().get_schema_guard();
+    if (guard == nullptr) return OB_ERR_UNEXPECTED;
+    if (OB_FAIL(guard->get_table_schema(index_dml_info.ref_table_id_, ai_table))) return ret;
+    if (ai_table == nullptr) return OB_ERR_UNEXPECTED;
+    for (auto it = ai_table->column_begin(); it != ai_table->column_end(); ++it) {
+      if (*it == nullptr) return OB_ERR_UNEXPECTED;
+      if (((*it)->get_column_flags() & share::AI_RESULT_SPEC_COLUMN_FLAG) != 0) {
+        dml_base_ctdef.has_ai_columns_ = true;
+        cg_.phy_plan_->set_has_nested_sql(true);
+        cg_.phy_plan_->set_need_serial_exec(true);
+      }
+    }
+  }
+
   dml_base_ctdef.is_vec_hnsw_index_vid_opt_ = index_dml_info.is_vec_hnsw_index_vid_opt_;
   dml_base_ctdef.column_ids_.set_capacity(index_dml_info.column_exprs_.count());
   if (OB_FAIL(generate_dml_column_ids(op, index_dml_info.column_exprs_, dml_base_ctdef.column_ids_))) {

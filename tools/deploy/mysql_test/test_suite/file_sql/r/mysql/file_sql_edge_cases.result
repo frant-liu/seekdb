@@ -1,0 +1,25 @@
+inferred_types_ok
+1
+wide
+9223372036854775808
+-9223372036854775809
+failed_copy_target_absent
+1
+failed_copy_temp_absent
+1
+variant	codec_ok
+1.0-NONE-False	1
+variant	codec_ok
+1.0-NONE-True	1
+variant	codec_ok
+1.0-SNAPPY-False	1
+variant	codec_ok
+1.0-SNAPPY-True	1
+variant	codec_ok
+2.0-NONE-False	1
+variant	codec_ok
+2.0-NONE-True	1
+variant	codec_ok
+2.0-SNAPPY-False	1
+variant	codec_ok
+2.0-SNAPPY-True	1
